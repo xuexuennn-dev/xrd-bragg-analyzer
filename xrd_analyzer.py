@@ -2,8 +2,8 @@
 XRD Bragg Analyzer
 ==================
 A lightweight scientific computing toolkit for X-ray diffraction (XRD) data processing,
-automated peak finding, Bragg's Law interplanar lattice spacing (d-spacing) calculation,
-and crystallographic phase analysis.
+candidate peak detection, Bragg's Law interplanar lattice spacing (d-spacing) calculation,
+and crystallographic profile visualization.
 
 Author: Ye Xu (github.com/xuexuennn-dev)
 License: MIT
@@ -96,14 +96,17 @@ def load_xrd_data(filepath):
     return parse_ascii_xrd(filepath)
 
 
-def analyze_xrd(two_theta, intensity, wavelength=1.5406, prominence=50.0, distance=15, smooth=True):
+def analyze_xrd(two_theta, intensity, wavelength=1.5406, prominence=None, distance=20, smooth=True):
     """
-    Execute automated XRD processing pipeline:
+    Execute XRD processing pipeline:
       1. Noise smoothing with Savitzky-Golay filter
-      2. Peak detection via scipy.signal.find_peaks
+      2. Peak detection via scipy.signal.find_peaks (adaptive or user-specified prominence)
       3. d-spacing calculation using Bragg's Law
-      4. Relative intensity (I/I0) calculation
+      4. Net relative intensity (I/I0) calculation
     """
+    intensity = np.array(intensity, dtype=float)
+    two_theta = np.array(two_theta, dtype=float)
+
     if smooth and len(intensity) > 15:
         # Window length 11, polynomial order 3
         smoothed_intensity = savgol_filter(intensity, window_length=11, polyorder=3)
@@ -111,10 +114,18 @@ def analyze_xrd(two_theta, intensity, wavelength=1.5406, prominence=50.0, distan
     else:
         smoothed_intensity = intensity
 
+    # Adaptive prominence if not explicitly specified:
+    # 5% of dynamic range (max - min) of smoothed intensity, minimum 20.0
+    dynamic_range = float(np.max(smoothed_intensity) - np.min(smoothed_intensity))
+    if prominence is None:
+        effective_prominence = max(20.0, 0.05 * dynamic_range)
+    else:
+        effective_prominence = float(prominence)
+
     # Peak detection
-    peaks, properties = find_peaks(
+    peaks, _ = find_peaks(
         smoothed_intensity,
-        prominence=prominence,
+        prominence=effective_prominence,
         distance=distance
     )
 
@@ -122,8 +133,11 @@ def analyze_xrd(two_theta, intensity, wavelength=1.5406, prominence=50.0, distan
     peak_intensity = smoothed_intensity[peaks]
     d_spacings = calculate_d_spacing(peak_2theta, wavelength=wavelength)
 
-    max_intensity = np.max(peak_intensity) if len(peak_intensity) > 0 else 1.0
-    relative_intensity = (peak_intensity / max_intensity) * 100.0
+    # Net relative intensity: subtract baseline minimum to reflect true peak signal
+    baseline = float(np.min(smoothed_intensity))
+    net_intensity = peak_intensity - baseline
+    max_net = float(np.max(net_intensity)) if len(net_intensity) > 0 and np.max(net_intensity) > 0 else 1.0
+    relative_intensity = (net_intensity / max_net) * 100.0
 
     peak_records = []
     for tt, d, counts, rel_i in zip(peak_2theta, d_spacings, peak_intensity, relative_intensity):
@@ -135,54 +149,91 @@ def analyze_xrd(two_theta, intensity, wavelength=1.5406, prominence=50.0, distan
         })
 
     return {
+        'two_theta': two_theta,
+        'raw_intensity': intensity,
         'smoothed_intensity': smoothed_intensity,
         'peaks': peaks,
-        'peak_records': peak_records
+        'peak_records': peak_records,
+        'prominence_used': effective_prominence
     }
 
 
-def plot_diffractogram(two_theta, raw_intensity, smoothed_intensity, peak_records, output_image="xrd_plot.png"):
+def plot_diffractogram(two_theta, raw_intensity, smoothed_intensity, peak_records, output_image="xrd_plot.png", max_labeled_peaks=10):
     """
-    Generate publication-ready XRD diffractogram with peak annotations.
+    Generate publication-ready XRD diffractogram with clear, non-overlapping peak annotations.
     """
     plt.figure(figsize=(9, 5.5), dpi=300)
-    plt.plot(two_theta, raw_intensity, color='#94a3b8', alpha=0.45, label='Raw Intensity')
+    plt.plot(two_theta, raw_intensity, color='#94a3b8', alpha=0.45, linewidth=0.8, label='Raw Intensity')
     plt.plot(two_theta, smoothed_intensity, color='#0f172a', linewidth=1.2, label='Smoothed Profile')
 
-    # Annotate prominent peaks
-    for rec in peak_records:
+    # Filter candidate peaks for annotation to prevent clutter:
+    # Select peaks with relative intensity >= 15%, up to max_labeled_peaks
+    annotated_peaks = [rec for rec in peak_records if rec['relative_intensity_pct'] >= 15.0]
+    if len(annotated_peaks) > max_labeled_peaks:
+        annotated_peaks = sorted(annotated_peaks, key=lambda x: x['relative_intensity_pct'], reverse=True)[:max_labeled_peaks]
+    # Re-sort by 2theta for consistent left-to-right presentation
+    annotated_peaks = sorted(annotated_peaks, key=lambda x: x['2theta_deg'])
+
+    y_max = float(np.max(raw_intensity))
+    y_min = float(np.min(raw_intensity))
+    y_range = y_max - y_min if y_max > y_min else 1.0
+
+    for i, rec in enumerate(annotated_peaks):
         tt = rec['2theta_deg']
         d = rec['d_spacing_A']
         inte = rec['intensity']
-        rel = rec['relative_intensity_pct']
         
-        if rel >= 10.0:  # Only label peaks with >=10% relative intensity to prevent clutter
-            plt.scatter(tt, inte, color='#dc2626', s=24, zorder=5)
-            plt.annotate(
-                f"{tt:.2f}°\n({d:.3f}Å)",
-                xy=(tt, inte),
-                xytext=(0, 7),
-                textcoords="offset points",
-                ha='center',
-                fontsize=7.5,
-                color='#1e293b',
-                weight='bold'
-            )
+        # Stagger label heights to avoid overlap
+        offset_y = 12 if (i % 2 == 0) else 26
+        
+        plt.scatter(tt, inte, color='#dc2626', s=28, zorder=5)
+        plt.annotate(
+            f"{tt:.2f}°\n({d:.3f}Å)",
+            xy=(tt, inte),
+            xytext=(0, offset_y),
+            textcoords="offset points",
+            ha='center',
+            fontsize=8,
+            color='#1e293b',
+            weight='bold',
+            arrowprops=dict(arrowstyle="-", color='#dc2626', alpha=0.45, lw=0.7)
+        )
 
     plt.xlabel(r'Diffraction Angle $2\theta$ (degrees)', fontsize=11, fontweight='bold')
     plt.ylabel('Intensity (counts)', fontsize=11, fontweight='bold')
-    plt.title(r'X-Ray Diffractogram & Peak Indexing ($\lambda = 1.5406\ \mathrm{\AA}$)', fontsize=12, fontweight='bold')
+    plt.title(r'X-Ray Diffractogram & Candidate Peaks ($\lambda = 1.5406\ \mathrm{\AA}$)', fontsize=12, fontweight='bold')
     plt.legend(frameon=True, facecolor='#ffffff', edgecolor='#cbd5e1')
     plt.grid(True, linestyle='--', alpha=0.35)
+    plt.ylim(y_min - 0.05 * y_range, y_max + 0.16 * y_range)
     plt.tight_layout()
     plt.savefig(output_image)
     plt.close()
     print(f"[+] Diffractogram exported: {output_image}")
 
 
+def plot_xrd(results_or_two_theta, *args, save_path="xrd_analysis_plot.png", **kwargs):
+    """
+    Convenient plotting function supporting both results dict and raw array inputs:
+      Usage 1: plot_xrd(results, save_path="plot.png")
+      Usage 2: plot_xrd(two_theta, raw_intensity, smoothed_intensity, peak_records, output_image="plot.png")
+    """
+    if isinstance(results_or_two_theta, dict):
+        res = results_or_two_theta
+        plot_diffractogram(
+            two_theta=res['two_theta'],
+            raw_intensity=res['raw_intensity'],
+            smoothed_intensity=res['smoothed_intensity'],
+            peak_records=res['peak_records'],
+            output_image=kwargs.get('output_image', save_path),
+            max_labeled_peaks=kwargs.get('max_labeled_peaks', 10)
+        )
+    else:
+        plot_diffractogram(results_or_two_theta, *args, output_image=save_path, **kwargs)
+
+
 def print_summary_table(peak_records):
     """
-    Print formatted peak indexing summary.
+    Print formatted candidate peak summary.
     """
     print("\n" + "=" * 65)
     print(f"{'Peak #':<8}{'2-Theta (°)':<15}{'d-spacing (Å)':<18}{'Counts':<12}{'I/I0 (%)':<10}")
@@ -193,13 +244,13 @@ def print_summary_table(peak_records):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="XRD Bragg Analyzer - Automated Peak Indexing & d-spacing Calculator")
+    parser = argparse.ArgumentParser(description="XRD Bragg Analyzer - Candidate Peak Detection & d-spacing Calculator")
     parser.add_argument("input_file", help="Path to XRD data file (.raw binary or .txt/.csv ASCII)")
-    parser.add_argument("--wavelength", type=float, default=1.5406, help="Radiation wavelength in Angstroms (default: 1.5406 A)")
-    parser.add_argument("--prominence", type=float, default=50.0, help="Peak prominence threshold (default: 50.0)")
-    parser.add_argument("--distance", type=int, default=15, help="Minimum peak distance in points (default: 15)")
-    parser.add_argument("--out-plot", default="xrd_analysis_plot.png", help="Output plot filename")
-    parser.add_argument("--out-txt", default=None, help="Optional text export for indexed peaks")
+    parser.add_argument("--wavelength", "-w", type=float, default=1.5406, help="Radiation wavelength in Angstroms (default: 1.5406 A)")
+    parser.add_argument("--prominence", "-p", type=float, default=None, help="Peak prominence threshold (default: adaptive 5%% of dynamic range)")
+    parser.add_argument("--distance", "-d", type=int, default=20, help="Minimum peak distance in points (default: 20)")
+    parser.add_argument("--output", "-o", "--out-plot", dest="out_plot", default="xrd_analysis_plot.png", help="Output plot filename")
+    parser.add_argument("--out-txt", default=None, help="Optional text export for candidate peaks")
 
     args = parser.parse_args()
 
@@ -219,14 +270,10 @@ def main():
         distance=args.distance
     )
 
+    print(f"[+] Detected {len(results['peak_records'])} candidate peaks (adaptive prominence = {results['prominence_used']:.1f})")
     print_summary_table(results['peak_records'])
-    plot_diffractogram(
-        two_theta,
-        intensity,
-        results['smoothed_intensity'],
-        results['peak_records'],
-        output_image=args.out_plot
-    )
+    
+    plot_xrd(results, save_path=args.out_plot)
 
     if args.out_txt:
         with open(args.out_txt, 'w', encoding='utf-8') as f:
