@@ -5,7 +5,7 @@ A lightweight scientific computing toolkit for X-ray diffraction (XRD) data proc
 candidate peak detection, Bragg's Law interplanar lattice spacing (d-spacing) calculation,
 and crystallographic profile visualization.
 
-Author: Ye Xu (github.com/xuexuennn-dev)
+Maintainer: @xuexuennn-dev (github.com/xuexuennn-dev)
 License: MIT
 """
 

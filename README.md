@@ -124,7 +124,7 @@ plot_xrd(results, save_path="xrd_result.png")
 
 ```
 xrd-bragg-analyzer/
-├── sample_xrd_data.txt    # Experimental diffractometer scan (8001 data points)
+├── sample_xrd_data.txt    # Synthetic silicon reference pattern (8001 data points)
 ├── requirements.txt       # Dependencies (numpy, scipy, matplotlib)
 ├── xrd_analyzer.py        # Core parser, peak detection & visualization CLI
 ├── xrd_example.png        # Sample rendered plot
@@ -133,8 +133,7 @@ xrd-bragg-analyzer/
 
 ---
 
-## 👤 Author
+## 👤 Maintainer
 
-**Ye Xu**
-* GitHub: [@xuexuennn-dev](https://github.com/xuexuennn-dev)
-* LinkedIn: [Ye Xu](https://www.linkedin.com/in/ye-xu-guet/)
+- **Maintainer**: [@xuexuennn-dev](https://github.com/xuexuennn-dev)
+- **License**: MIT
