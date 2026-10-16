@@ -48,7 +48,7 @@ Where:
 
 ## 📊 Sample Diffractogram
 
-Sample output generated from `sample_xrd_data.txt` (8,001 data points, $2\theta = 10^\circ \text{--} 90^\circ$):
+Sample output generated from `sample_xrd_data.txt` (Standard Silicon Reference, 8,001 data points, $2\theta = 10^\circ \text{--} 90^\circ$):
 
 ![XRD Analysis Example](xrd_example.png)
 
@@ -56,13 +56,12 @@ Sample output generated from `sample_xrd_data.txt` (8,001 data points, $2\theta 
 =================================================================
 Peak #  2-Theta (°)    d-spacing (Å)     Counts      I/I0 (%)  
 -----------------------------------------------------------------
-1       27.080         3.2901            5787.9      24.9      
-2       28.680         3.1101            10712.4     73.0      
-3       31.200         2.8644            9929.4      65.4      
-4       32.060         2.7895            8910.9      55.4      
-5       47.350         1.9183            13470.0     100.0     
-6       52.010         1.7569            6544.9      32.3      
-7       58.670         1.5723            7115.6      37.9      
+1       28.440         3.1358            10546.6     100.0     
+2       47.300         1.9202            5911.9      54.6      
+3       56.120         1.6376            3406.6      30.1      
+4       69.120         1.3579            1176.5      8.2       
+5       76.380         1.2459            1553.0      11.9      
+6       88.030         1.1086            1925.3      15.6      
 =================================================================
 ```
 
